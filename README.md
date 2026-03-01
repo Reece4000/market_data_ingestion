@@ -1,4 +1,4 @@
-# Market Prep — Data Engineering Learning Project
+# Market Prep — GCP Cloud DE practice project
 
 Stack: Cloud Run · BigQuery · Stored Procedures · FastAPI · React · Firestore · Docker
 
