@@ -1,0 +1,27 @@
+version: "3.8"
+
+services:
+  api:
+    build:
+      context: ./api
+    ports:
+      - "8000:8000"
+    env_file:
+      - .env
+    # Mount sa-key.json for local ADC — not needed in Cloud Run
+    volumes:
+      - ./sa-key.json:/app/sa-key.json:ro
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        - VITE_API_URL=
+    ports:
+      - "3000:80"
+    # Override nginx.conf with the dev version that proxies /api/ to the api container.
+    # In Cloud Run, VITE_API_URL is set so the browser calls the API directly — no proxy needed.
+    volumes:
+      - ./frontend/nginx.dev.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api

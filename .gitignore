@@ -1,0 +1,32 @@
+# Service account key — NEVER commit this
+sa-key.json
+*.json.key
+
+# Env files
+.env
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Terraform
+terraform/.terraform/
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
+terraform/.terraform.lock.hcl
+
+# Misc
+.DS_Store
+
+# Claude
+.claude/
+
+# Local docs
+SUMMARY.md
+WORKBOOK.md
