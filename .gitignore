@@ -4,6 +4,7 @@ sa-key.json
 
 # Env files
 .env
+.env.example
 
 # Python
 __pycache__/
