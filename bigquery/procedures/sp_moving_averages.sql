@@ -8,111 +8,162 @@
 --   WITH RECURSIVE + UNION ALL                                  → iterative EMA
 --   MERGE ... USING ... ON ... WHEN MATCHED / NOT MATCHED       → upsert
 
-CREATE OR REPLACE PROCEDURE `YOUR_PROJECT_ID.market_data.sp_moving_averages`()
+CREATE OR REPLACE PROCEDURE `YOUR_PROJECT_ID.market_data.sp_moving_averages`(v_run_id STRING)
 BEGIN
+  DECLARE v_started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP();
+  DECLARE v_finished_at TIMESTAMP;
+  DECLARE v_rows_merged INT64 DEFAULT 0;
 
-  -- ── Step 1: SMA (Simple Moving Average) ──────────────────────────────────
-  -- Window functions naturally handle sliding windows.
-  -- ROWS BETWEEN 19 PRECEDING AND CURRENT ROW = 20-period window.
-  CREATE TEMP TABLE temp_sma AS
-  SELECT
-    symbol,
-    date,
-    ROUND(AVG(close) OVER (
-      PARTITION BY symbol ORDER BY date
-      ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
-    ), 4) AS sma_20,
-    ROUND(AVG(close) OVER (
-      PARTITION BY symbol ORDER BY date
-      ROWS BETWEEN 49 PRECEDING AND CURRENT ROW
-    ), 4) AS sma_50,
-    ROUND(AVG(close) OVER (
-      PARTITION BY symbol ORDER BY date
-      ROWS BETWEEN 199 PRECEDING AND CURRENT ROW
-    ), 4) AS sma_200
-  FROM `YOUR_PROJECT_ID.market_data.raw_prices`;
+  BEGIN
 
-
-  -- ── Step 2: EMA (Exponential Moving Average) ──────────────────────────────
-  -- EMA formula: EMA[i] = α × price[i] + (1 − α) × EMA[i−1]
-  -- where α (smoothing factor) = 2 / (period + 1)
-  --   EMA-12: α = 2/13 ≈ 0.1538
-  --   EMA-26: α = 2/27 ≈ 0.0741
-  --
-  -- Requires a recursive CTE because each row depends on the previous row.
-  -- numbered: assigns row numbers per symbol (1 = oldest date)
-  -- Recursive anchor: seed EMA with the closing price of the first row
-  -- Recursive step: apply the EMA formula using the previous row's EMA
-  CREATE TEMP TABLE temp_ema AS
-  WITH RECURSIVE numbered AS (
+    -- ── Step 1: SMA (Simple Moving Average) ────────────────────────────────
+    -- Window functions naturally handle sliding windows.
+    -- ROWS BETWEEN 19 PRECEDING AND CURRENT ROW = 20-period window.
+    CREATE TEMP TABLE temp_sma AS
     SELECT
       symbol,
       date,
-      close,
-      ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date) AS rn
-    FROM (
-      -- Deduplicate: one row per (symbol, date) before numbering rows for recursion
-      SELECT symbol, date, AVG(close) AS close
-      FROM `YOUR_PROJECT_ID.market_data.raw_prices`
-      GROUP BY symbol, date
+      ROUND(AVG(close) OVER (
+        PARTITION BY symbol ORDER BY date
+        ROWS BETWEEN 19 PRECEDING AND CURRENT ROW
+      ), 4) AS sma_20,
+      ROUND(AVG(close) OVER (
+        PARTITION BY symbol ORDER BY date
+        ROWS BETWEEN 49 PRECEDING AND CURRENT ROW
+      ), 4) AS sma_50,
+      ROUND(AVG(close) OVER (
+        PARTITION BY symbol ORDER BY date
+        ROWS BETWEEN 199 PRECEDING AND CURRENT ROW
+      ), 4) AS sma_200
+    FROM `YOUR_PROJECT_ID.market_data.raw_prices`;
+
+
+    -- ── Step 2: EMA (Exponential Moving Average) ───────────────────────────
+    -- EMA formula: EMA[i] = α × price[i] + (1 − α) × EMA[i−1]
+    -- where α (smoothing factor) = 2 / (period + 1)
+    --   EMA-12: α = 2/13 ≈ 0.1538
+    --   EMA-26: α = 2/27 ≈ 0.0741
+    --
+    -- Requires a recursive CTE because each row depends on the previous row.
+    -- numbered: assigns row numbers per symbol (1 = oldest date)
+    -- Recursive anchor: seed EMA with the closing price of the first row
+    -- Recursive step: apply the EMA formula using the previous row's EMA
+    CREATE TEMP TABLE temp_ema AS
+    WITH RECURSIVE numbered AS (
+      SELECT
+        symbol,
+        date,
+        close,
+        ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date) AS rn
+      FROM (
+        -- Deduplicate: one row per (symbol, date) before numbering rows for recursion
+        SELECT symbol, date, AVG(close) AS close
+        FROM `YOUR_PROJECT_ID.market_data.raw_prices`
+        GROUP BY symbol, date
+      )
+    ),
+    ema_cte AS (
+      -- Anchor: seed each symbol with its first (oldest) price
+      SELECT symbol, date, rn,
+             close AS ema_12,
+             close AS ema_26
+      FROM numbered
+      WHERE rn = 1
+
+      UNION ALL
+
+      -- Recursive step: EMA = α × today's close + (1 − α) × yesterday's EMA
+      SELECT
+        n.symbol,
+        n.date,
+        n.rn,
+        ROUND((2.0 / 13) * n.close + (1 - 2.0 / 13) * e.ema_12, 6) AS ema_12,
+        ROUND((2.0 / 27) * n.close + (1 - 2.0 / 27) * e.ema_26, 6) AS ema_26
+      FROM numbered n
+      JOIN ema_cte e
+        ON n.symbol = e.symbol
+       AND n.rn = e.rn + 1
     )
-  ),
-  ema_cte AS (
-    -- Anchor: seed each symbol with its first (oldest) price
-    SELECT symbol, date, rn,
-           close AS ema_12,
-           close AS ema_26
-    FROM numbered
-    WHERE rn = 1
-
-    UNION ALL
-
-    -- Recursive step: EMA = α × today's close + (1 − α) × yesterday's EMA
-    SELECT
-      n.symbol,
-      n.date,
-      n.rn,
-      ROUND((2.0 / 13) * n.close + (1 - 2.0 / 13) * e.ema_12, 6) AS ema_12,
-      ROUND((2.0 / 27) * n.close + (1 - 2.0 / 27) * e.ema_26, 6) AS ema_26
-    FROM numbered n
-    JOIN ema_cte e
-      ON n.symbol = e.symbol
-     AND n.rn = e.rn + 1
-  )
-  SELECT symbol, date, ema_12, ema_26
-  FROM ema_cte;
+    SELECT symbol, date, ema_12, ema_26
+    FROM ema_cte;
 
 
-  -- ── Step 3: Merge into technical_indicators ────────────────────────────────
-  -- MERGE is BigQuery's upsert:
-  --   WHEN MATCHED     → row exists, UPDATE it
-  --   WHEN NOT MATCHED → new row, INSERT it
-  MERGE `YOUR_PROJECT_ID.market_data.technical_indicators` AS T
-  USING (
-    SELECT
-      s.symbol, s.date,
-      s.sma_20, s.sma_50, s.sma_200,
-      e.ema_12, e.ema_26
-    FROM temp_sma s
-    JOIN temp_ema e ON s.symbol = e.symbol AND s.date = e.date
-  ) AS S
-  ON T.symbol = S.symbol AND T.date = S.date
+    -- ── Step 3: Merge into technical_indicators ─────────────────────────────
+    -- MERGE is BigQuery's upsert:
+    --   WHEN MATCHED     → row exists, UPDATE it
+    --   WHEN NOT MATCHED → new row, INSERT it
+    MERGE `YOUR_PROJECT_ID.market_data.technical_indicators` AS T
+    USING (
+      SELECT
+        s.symbol, s.date,
+        s.sma_20, s.sma_50, s.sma_200,
+        e.ema_12, e.ema_26
+      FROM temp_sma s
+      JOIN temp_ema e ON s.symbol = e.symbol AND s.date = e.date
+    ) AS S
+    ON T.symbol = S.symbol AND T.date = S.date
+    WHEN MATCHED THEN
+      UPDATE SET
+        sma_20        = S.sma_20,
+        sma_50        = S.sma_50,
+        sma_200       = S.sma_200,
+        ema_12        = S.ema_12,
+        ema_26        = S.ema_26,
+        calculated_at = CURRENT_TIMESTAMP()
+    WHEN NOT MATCHED THEN
+      INSERT (symbol, date, sma_20, sma_50, sma_200, ema_12, ema_26, calculated_at)
+      VALUES (S.symbol, S.date, S.sma_20, S.sma_50, S.sma_200, S.ema_12, S.ema_26, CURRENT_TIMESTAMP());
 
-  WHEN MATCHED THEN
-    UPDATE SET
-      sma_20        = S.sma_20,
-      sma_50        = S.sma_50,
-      sma_200       = S.sma_200,
-      ema_12        = S.ema_12,
-      ema_26        = S.ema_26,
-      calculated_at = CURRENT_TIMESTAMP()
-
-  WHEN NOT MATCHED THEN
-    INSERT (symbol, date, sma_20, sma_50, sma_200, ema_12, ema_26, calculated_at)
-    VALUES (S.symbol, S.date, S.sma_20, S.sma_50, S.sma_200, S.ema_12, S.ema_26, CURRENT_TIMESTAMP());
+    SET v_rows_merged = @@row_count;
 
 
-  DROP TABLE IF EXISTS temp_sma;
-  DROP TABLE IF EXISTS temp_ema;
+    DROP TABLE IF EXISTS temp_sma;
+    DROP TABLE IF EXISTS temp_ema;
+
+    SET v_finished_at = CURRENT_TIMESTAMP();
+    INSERT INTO `YOUR_PROJECT_ID.market_data.audit_log` (
+      run_id,
+      procedure_name,
+      started_at,
+      finished_at,
+      duration_seconds,
+      rows_merged,
+      status,
+      error_message
+    )
+    VALUES (
+      v_run_id,
+      'sp_moving_averages',
+      v_started_at,
+      v_finished_at,
+      CAST(TIMESTAMP_DIFF(v_finished_at, v_started_at, MILLISECOND) AS FLOAT64) / 1000.0,
+      v_rows_merged,
+      'success',
+      NULL
+    );
+  EXCEPTION WHEN ERROR THEN
+    SET v_finished_at = CURRENT_TIMESTAMP();
+    INSERT INTO `YOUR_PROJECT_ID.market_data.audit_log` (
+      run_id,
+      procedure_name,
+      started_at,
+      finished_at,
+      duration_seconds,
+      rows_merged,
+      status,
+      error_message
+    )
+    VALUES (
+      v_run_id,
+      'sp_moving_averages',
+      v_started_at,
+      v_finished_at,
+      CAST(TIMESTAMP_DIFF(v_finished_at, v_started_at, MILLISECOND) AS FLOAT64) / 1000.0,
+      NULL,
+      'error',
+      @@error.message
+    );
+    RAISE;
+  END;
 
 END;

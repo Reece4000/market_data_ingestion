@@ -12,12 +12,65 @@
 -- Usage:
 --   CALL `YOUR_PROJECT_ID.market_data.sp_run_all`();
 
+-- Orchestrator
 CREATE OR REPLACE PROCEDURE `YOUR_PROJECT_ID.market_data.sp_run_all`()
 BEGIN
+  DECLARE v_run_id STRING DEFAULT GENERATE_UUID();
+  DECLARE v_started_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP();
+  DECLARE v_finished_at TIMESTAMP;
+  DECLARE v_failed_procedures ARRAY<STRING> DEFAULT [];
 
-  CALL `YOUR_PROJECT_ID.market_data.sp_moving_averages`();
-  CALL `YOUR_PROJECT_ID.market_data.sp_rsi`();
-  CALL `YOUR_PROJECT_ID.market_data.sp_macd`();        -- depends on EMA from step 1
-  CALL `YOUR_PROJECT_ID.market_data.sp_bollinger_bands`();
+  -- 1) moving averages
+  BEGIN
+    CALL `YOUR_PROJECT_ID.market_data.sp_moving_averages`(v_run_id);
+  EXCEPTION WHEN ERROR THEN
+    SET v_failed_procedures = ARRAY_CONCAT(v_failed_procedures, ['sp_moving_averages']);
+  END;
 
+  -- 2) rsi
+  BEGIN
+    CALL `YOUR_PROJECT_ID.market_data.sp_rsi`(v_run_id);
+  EXCEPTION WHEN ERROR THEN
+    SET v_failed_procedures = ARRAY_CONCAT(v_failed_procedures, ['sp_rsi']);
+  END;
+
+  -- 3) macd (depends on EMA from step 1)
+  BEGIN
+    CALL `YOUR_PROJECT_ID.market_data.sp_macd`(v_run_id);
+  EXCEPTION WHEN ERROR THEN
+    SET v_failed_procedures = ARRAY_CONCAT(v_failed_procedures, ['sp_macd']);
+  END;
+
+  -- 4) bollinger bands
+  BEGIN
+    CALL `YOUR_PROJECT_ID.market_data.sp_bollinger_bands`(v_run_id);
+  EXCEPTION WHEN ERROR THEN
+    SET v_failed_procedures = ARRAY_CONCAT(v_failed_procedures, ['sp_bollinger_bands']);
+  END;
+
+  SET v_finished_at = CURRENT_TIMESTAMP();
+  INSERT INTO `YOUR_PROJECT_ID.market_data.audit_log` (
+    run_id,
+    procedure_name,
+    started_at,
+    finished_at,
+    duration_seconds,
+    rows_merged,
+    status,
+    error_message
+  )
+  VALUES (
+    v_run_id,
+    'sp_run_all',
+    v_started_at,
+    v_finished_at,
+    CAST(TIMESTAMP_DIFF(v_finished_at, v_started_at, MILLISECOND) AS FLOAT64) / 1000.0,
+    NULL,
+    IF(ARRAY_LENGTH(v_failed_procedures) = 0, 'success', 'error'),
+    IF(
+      ARRAY_LENGTH(v_failed_procedures) = 0,
+      NULL,
+      CONCAT('Failed child procedures: ', ARRAY_TO_STRING(v_failed_procedures, ', '))
+    )
+  );
 END;

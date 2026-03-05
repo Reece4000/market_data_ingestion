@@ -174,7 +174,10 @@ def main() -> None:
         try:
             last_ingested_date = last_ingested_dates_map.get(symbol)
             lookback_days = (datetime.now(timezone.utc).date() - last_ingested_date).days if last_ingested_date else 365
-            all_rows.extend(fetch_stock_data(symbol, lookback_days))
+            if lookback_days > 0:
+                all_rows.extend(fetch_stock_data(symbol, lookback_days))
+            else:
+                logger.info(f"No new data needed for {symbol}, last ingested date: {last_ingested_date}")
         except Exception as exc:
             logger.error(f"Stock fetch failed for {symbol}: {exc}")
 
@@ -182,7 +185,10 @@ def main() -> None:
         try:
             last_ingested_date = last_ingested_dates_map.get(coin_id.upper())
             lookback_days = (datetime.now(timezone.utc).date() - last_ingested_date).days if last_ingested_date else 365
-            all_rows.extend(fetch_crypto_data(coin_id, lookback_days))
+            if lookback_days > 0:
+                all_rows.extend(fetch_crypto_data(coin_id, lookback_days))
+            else:
+                logger.info(f"No new data needed for {coin_id}, last ingested date: {last_ingested_date}")
         except Exception as exc:
             logger.error(f"Crypto fetch failed for {coin_id}: {exc}")
 
