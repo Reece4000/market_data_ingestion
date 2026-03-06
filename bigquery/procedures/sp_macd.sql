@@ -83,45 +83,23 @@ BEGIN
     DROP TABLE IF EXISTS temp_signal;
 
     SET v_finished_at = CURRENT_TIMESTAMP();
-    INSERT INTO `YOUR_PROJECT_ID.market_data.audit_log` (
-      run_id,
-      procedure_name,
-      started_at,
-      finished_at,
-      duration_seconds,
-      rows_merged,
-      status,
-      error_message
-    )
-    VALUES (
+    CALL `YOUR_PROJECT_ID.market_data.sp_write_audit_log`(
       v_run_id,
       'sp_macd',
       v_started_at,
       v_finished_at,
-      CAST(TIMESTAMP_DIFF(v_finished_at, v_started_at, MILLISECOND) AS FLOAT64) / 1000.0,
       v_rows_merged,
       'success',
-      NULL
+      CAST(NULL AS STRING)
     );
   EXCEPTION WHEN ERROR THEN
     SET v_finished_at = CURRENT_TIMESTAMP();
-    INSERT INTO `YOUR_PROJECT_ID.market_data.audit_log` (
-      run_id,
-      procedure_name,
-      started_at,
-      finished_at,
-      duration_seconds,
-      rows_merged,
-      status,
-      error_message
-    )
-    VALUES (
+    CALL `YOUR_PROJECT_ID.market_data.sp_write_audit_log`(
       v_run_id,
       'sp_macd',
       v_started_at,
       v_finished_at,
-      CAST(TIMESTAMP_DIFF(v_finished_at, v_started_at, MILLISECOND) AS FLOAT64) / 1000.0,
-      NULL,
+      CAST(NULL AS INT64),
       'error',
       @@error.message
     );
