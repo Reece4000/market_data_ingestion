@@ -24,13 +24,23 @@ BEGIN
     MERGE `YOUR_PROJECT_ID.market_data.technical_indicators` AS T
     USING (
       WITH
+      deduped_prices AS (
+        SELECT
+          symbol,
+          date,
+          AVG(close) AS close
+        FROM `YOUR_PROJECT_ID.market_data.raw_prices`
+        WHERE close IS NOT NULL
+        GROUP BY symbol, date
+      ),
+
       -- Step 1: calculate daily price changes using LAG (look at previous row)
       price_changes AS (
         SELECT
           symbol,
           date,
           close - LAG(close) OVER (PARTITION BY symbol ORDER BY date) AS daily_change
-        FROM `YOUR_PROJECT_ID.market_data.raw_prices`
+        FROM deduped_prices
       ),
 
       -- Step 2: split changes into gains and losses

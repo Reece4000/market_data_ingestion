@@ -55,3 +55,26 @@ CLUSTER BY symbol
 OPTIONS (
   description = 'Technical indicators derived by stored procedures'
 );
+
+CREATE TABLE IF NOT EXISTS `YOUR_PROJECT_ID.market_data.procedure_audit_log` (
+  run_id STRING,
+  procedure_name STRING,
+  started_at TIMESTAMP,
+  finished_at TIMESTAMP,
+  duration_seconds FLOAT64,
+  rows_merged INT64,
+  status STRING,
+  error_message STRING
+) PARTITION BY DATE(started_at);
+
+CREATE TABLE IF NOT EXISTS `YOUR_PROJECT_ID.market_data.data_quality_report` (
+  run_id STRING,
+  checked_at TIMESTAMP,
+  symbol STRING,
+  check_name STRING,
+  severity STRING,
+  affected_date DATE,
+  detail STRING
+)
+PARTITION BY DATE(checked_at)
+CLUSTER BY check_name, symbol;

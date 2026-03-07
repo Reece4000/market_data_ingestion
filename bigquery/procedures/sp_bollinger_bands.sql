@@ -20,13 +20,22 @@ BEGIN
   BEGIN
     MERGE `YOUR_PROJECT_ID.market_data.technical_indicators` AS T
     USING (
+      WITH deduped_prices AS (
+        SELECT
+          symbol,
+          date,
+          AVG(close) AS close
+        FROM `YOUR_PROJECT_ID.market_data.raw_prices`
+        WHERE close IS NOT NULL
+        GROUP BY symbol, date
+      )
       SELECT
         symbol,
         date,
         -- Named WINDOW clause keeps the SQL readable
         ROUND(AVG(close) OVER w + 2 * STDDEV_POP(close) OVER w, 4) AS bb_upper,
         ROUND(AVG(close) OVER w - 2 * STDDEV_POP(close) OVER w, 4) AS bb_lower
-      FROM `YOUR_PROJECT_ID.market_data.raw_prices`
+      FROM deduped_prices
       -- WINDOW alias: 20-period sliding window, partitioned per symbol
       WINDOW w AS (
         PARTITION BY symbol
