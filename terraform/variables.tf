@@ -38,3 +38,49 @@ variable "ingestion_schedule" {
   type        = string
   default     = "0 18 * * 1-5" # 6pm UTC weekdays
 }
+
+variable "firebase_project_id" {
+  description = "Firebase project ID used for token verification"
+  type        = string
+}
+
+variable "firebase_api_key" {
+  description = "Firebase web app API key for frontend auth"
+  type        = string
+  sensitive   = true
+}
+
+variable "firebase_auth_domain" {
+  description = "Firebase auth domain for frontend auth"
+  type        = string
+}
+
+variable "firebase_app_id" {
+  description = "Firebase web app appId for frontend auth"
+  type        = string
+  sensitive   = true
+}
+
+variable "api_rate_limit_per_min" {
+  description = "Max API requests per minute per client IP"
+  type        = number
+  default     = 240
+}
+
+variable "watchlist_write_rate_limit_per_min" {
+  description = "Max watchlist write requests per minute per client IP"
+  type        = number
+  default     = 20
+}
+
+variable "symbols_cache_ttl_seconds" {
+  description = "TTL for /api/symbols in-memory cache"
+  type        = number
+  default     = 300
+}
+
+variable "watchlist_cache_ttl_seconds" {
+  description = "TTL for /api/watchlist in-memory cache"
+  type        = number
+  default     = 30
+}

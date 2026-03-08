@@ -13,6 +13,15 @@ const BASE_URL = import.meta.env.VITE_API_URL || "";
 
 const api = axios.create({ baseURL: BASE_URL });
 
+const authHeaders = (idToken) =>
+  idToken
+    ? {
+        headers: {
+          Authorization: `Bearer ${idToken}`,
+        },
+      }
+    : {};
+
 export const fetchSymbols = () =>
   api.get("/api/symbols").then((r) => r.data);
 
@@ -22,11 +31,11 @@ export const fetchPrices = (symbol, days = 90) =>
 export const fetchIndicators = (symbol, days = 90) =>
   api.get(`/api/indicators/${symbol}`, { params: { days } }).then((r) => r.data);
 
-export const fetchWatchlist = () =>
-  api.get("/api/watchlist").then((r) => r.data);
+export const fetchWatchlist = (idToken) =>
+  api.get("/api/watchlist", authHeaders(idToken)).then((r) => r.data);
 
-export const addToWatchlist = (symbol) =>
-  api.post("/api/watchlist", { symbol }).then((r) => r.data);
+export const addToWatchlist = (symbol, idToken) =>
+  api.post("/api/watchlist", { symbol }, authHeaders(idToken)).then((r) => r.data);
 
-export const removeFromWatchlist = (symbol) =>
-  api.delete(`/api/watchlist/${symbol}`).then((r) => r.data);
+export const removeFromWatchlist = (symbol, idToken) =>
+  api.delete(`/api/watchlist/${symbol}`, authHeaders(idToken)).then((r) => r.data);

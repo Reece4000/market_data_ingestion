@@ -6,6 +6,11 @@ set -euo pipefail
 source "$(dirname "$0")/_load_env.sh"
 SA="market-prep-sa@$PROJECT_ID.iam.gserviceaccount.com"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+FIREBASE_PROJECT_ID="${FIREBASE_PROJECT_ID:-$PROJECT_ID}"
+API_RATE_LIMIT_PER_MIN="${API_RATE_LIMIT_PER_MIN:-240}"
+WATCHLIST_WRITE_RATE_LIMIT_PER_MIN="${WATCHLIST_WRITE_RATE_LIMIT_PER_MIN:-20}"
+SYMBOLS_CACHE_TTL_SECONDS="${SYMBOLS_CACHE_TTL_SECONDS:-300}"
+WATCHLIST_CACHE_TTL_SECONDS="${WATCHLIST_CACHE_TTL_SECONDS:-30}"
 
 echo "==> Deploying API for project: $PROJECT_ID"
 
@@ -17,12 +22,12 @@ gcloud builds submit "$ROOT/api" \
 
 # ── Deploy to Cloud Run ───────────────────────────────────────────────────────
 echo "--> Deploying to Cloud Run..."
-gcloud run services deploy market-api \
+gcloud run deploy market-api \
   --image "gcr.io/$PROJECT_ID/market-api" \
   --region "$REGION" \
   --allow-unauthenticated \
   --service-account "$SA" \
-  --set-env-vars "GCP_PROJECT_ID=$PROJECT_ID,BQ_DATASET=market_data" \
+  --set-env-vars "GCP_PROJECT_ID=$PROJECT_ID,BQ_DATASET=market_data,FIREBASE_PROJECT_ID=$FIREBASE_PROJECT_ID,API_RATE_LIMIT_PER_MIN=$API_RATE_LIMIT_PER_MIN,WATCHLIST_WRITE_RATE_LIMIT_PER_MIN=$WATCHLIST_WRITE_RATE_LIMIT_PER_MIN,SYMBOLS_CACHE_TTL_SECONDS=$SYMBOLS_CACHE_TTL_SECONDS,WATCHLIST_CACHE_TTL_SECONDS=$WATCHLIST_CACHE_TTL_SECONDS" \
   --project="$PROJECT_ID"
 
 # ── Print the deployed URL ────────────────────────────────────────────────────

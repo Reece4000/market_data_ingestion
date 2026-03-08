@@ -38,8 +38,12 @@ resource "null_resource" "build_api" {
 # Frontend is built after the API is deployed so we can bake its URL in.
 resource "null_resource" "build_frontend" {
   triggers = {
-    src     = sha1(join("", [for f in sort(fileset("${path.module}/../frontend", "**")) : filesha1("${path.module}/../frontend/${f}")]))
-    api_url = google_cloud_run_v2_service.api.uri
+    src                  = sha1(join("", [for f in sort(fileset("${path.module}/../frontend", "**")) : filesha1("${path.module}/../frontend/${f}")]))
+    api_url              = google_cloud_run_v2_service.api.uri
+    firebase_project_id  = var.firebase_project_id
+    firebase_api_key     = var.firebase_api_key
+    firebase_auth_domain = var.firebase_auth_domain
+    firebase_app_id      = var.firebase_app_id
   }
 
   # Use Cloud Build (native AMD64) instead of local docker build,
@@ -48,7 +52,7 @@ resource "null_resource" "build_frontend" {
     command = <<-EOT
       gcloud builds submit ${path.module}/../frontend \
         --config=${path.module}/../frontend/cloudbuild.yaml \
-        --substitutions=_VITE_API_URL=${google_cloud_run_v2_service.api.uri} \
+        --substitutions=_VITE_API_URL=${google_cloud_run_v2_service.api.uri},_VITE_FIREBASE_API_KEY=${var.firebase_api_key},_VITE_FIREBASE_AUTH_DOMAIN=${var.firebase_auth_domain},_VITE_FIREBASE_PROJECT_ID=${var.firebase_project_id},_VITE_FIREBASE_APP_ID=${var.firebase_app_id} \
         --project=${var.project_id}
     EOT
   }
@@ -119,6 +123,26 @@ resource "google_cloud_run_v2_service" "api" {
       env {
         name  = "BQ_DATASET"
         value = var.bq_dataset
+      }
+      env {
+        name  = "FIREBASE_PROJECT_ID"
+        value = var.firebase_project_id
+      }
+      env {
+        name  = "API_RATE_LIMIT_PER_MIN"
+        value = tostring(var.api_rate_limit_per_min)
+      }
+      env {
+        name  = "WATCHLIST_WRITE_RATE_LIMIT_PER_MIN"
+        value = tostring(var.watchlist_write_rate_limit_per_min)
+      }
+      env {
+        name  = "SYMBOLS_CACHE_TTL_SECONDS"
+        value = tostring(var.symbols_cache_ttl_seconds)
+      }
+      env {
+        name  = "WATCHLIST_CACHE_TTL_SECONDS"
+        value = tostring(var.watchlist_cache_ttl_seconds)
       }
     }
   }

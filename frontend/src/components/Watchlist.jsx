@@ -8,32 +8,42 @@
 import { useEffect, useState } from "react";
 import { addToWatchlist, fetchWatchlist, removeFromWatchlist } from "../api";
 
-function Watchlist({ onSelect }) {
+function Watchlist({ onSelect, idToken, isAuthenticated }) {
   const [symbols, setSymbols] = useState([]);
   const [input, setInput] = useState("");
 
-  const load = () => fetchWatchlist().then((d) => setSymbols(d.symbols || [])).catch(console.error);
+  const load = () =>
+    fetchWatchlist(idToken)
+      .then((d) => setSymbols(d.symbols || []))
+      .catch(console.error);
 
   useEffect(() => {
-    load();
-  }, []);
+    if (isAuthenticated && idToken) {
+      load();
+    } else {
+      setSymbols([]);
+    }
+  }, [idToken, isAuthenticated]);
 
   const handleAdd = async () => {
+    if (!idToken) return;
     const sym = input.trim().toUpperCase();
     if (!sym) return;
-    await addToWatchlist(sym);
+    await addToWatchlist(sym, idToken);
     setInput("");
     load();
   };
 
   const handleRemove = async (sym) => {
-    await removeFromWatchlist(sym);
+    if (!idToken) return;
+    await removeFromWatchlist(sym, idToken);
     load();
   };
 
   return (
     <div className="watchlist">
       <h3>Watchlist</h3>
+      {!isAuthenticated && <p className="empty-hint">Sign in to load your watchlist.</p>}
       <div className="watchlist-input">
         <input
           value={input}
@@ -41,11 +51,14 @@ function Watchlist({ onSelect }) {
           placeholder="Add ticker…"
           onKeyDown={(e) => e.key === "Enter" && handleAdd()}
           maxLength={10}
+          disabled={!isAuthenticated}
         />
-        <button onClick={handleAdd}>+</button>
+        <button onClick={handleAdd} disabled={!isAuthenticated}>
+          +
+        </button>
       </div>
 
-      {symbols.length === 0 && <p className="empty-hint">No symbols yet.</p>}
+      {isAuthenticated && symbols.length === 0 && <p className="empty-hint">No symbols yet.</p>}
       <ul className="watchlist-items">
         {symbols.map((sym) => (
           <li key={sym}>
